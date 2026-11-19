@@ -1,0 +1,428 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net: Default-deny everything not explicitly authorized below
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // -------------------------------------------------------------------------
+    // Hardened Security Primitives
+    // -------------------------------------------------------------------------
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(uid) {
+      return isVerifiedUser() && request.auth.uid == uid;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function hasValidEmail(email) {
+      return email is string && email.size() >= 3 && email.size() <= 254 && email.matches('^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$');
+    }
+
+    function hasValidDateString(d) {
+      return d is string && d.size() == 10 && d.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$');
+    }
+
+    // -------------------------------------------------------------------------
+    // Validation Blueprints (Synchronized with firebase-blueprint.json)
+    // -------------------------------------------------------------------------
+    function isValidUserProfile(data, uid) {
+      return data.keys().hasAll(['uid', 'displayName', 'email', 'photoURL', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'displayName', 'email', 'photoURL', 'createdAt', 'updatedAt'])
+        && isValidId(data.uid)
+        && data.uid == uid
+        && data.uid == request.auth.uid
+        && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 100
+        && hasValidEmail(data.email)
+        && data.photoURL is string && data.photoURL.size() <= 500
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidSavedTrip(data, uid, tripId) {
+      return data.keys().hasAll([
+          'id', 'ownerUid', 'localSourceId', 'title', 'destinationId', 'destinationName',
+          'stopNames', 'startDate', 'days', 'travellers', 'budgetInr', 'intent', 'style',
+          'interests', 'accommodationInr', 'transportationInr', 'activitiesInr', 'foodInr',
+          'estimatedTotalInr', 'withinBudget', 'budgetExplanation', 'status', 'provenance',
+          'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'ownerUid', 'localSourceId', 'title', 'destinationId', 'destinationName',
+          'stopNames', 'startDate', 'days', 'travellers', 'budgetInr', 'intent', 'style',
+          'interests', 'accommodationInr', 'transportationInr', 'activitiesInr', 'foodInr',
+          'estimatedTotalInr', 'withinBudget', 'budgetExplanation', 'status', 'provenance',
+          'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.id) && data.id == tripId
+        && isValidId(data.ownerUid) && data.ownerUid == uid && data.ownerUid == request.auth.uid
+        && data.localSourceId is string && data.localSourceId.size() <= 128
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 140
+        && data.destinationId is string && data.destinationId.size() >= 1 && data.destinationId.size() <= 64 && data.destinationId.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.destinationName is string && data.destinationName.size() >= 1 && data.destinationName.size() <= 100
+        && data.stopNames is list && data.stopNames.size() >= 1 && data.stopNames.size() <= 5 && data.stopNames[0] is string
+        && hasValidDateString(data.startDate)
+        && data.days is int && data.days >= 1 && data.days <= 14
+        && data.travellers is int && data.travellers >= 1 && data.travellers <= 12
+        && data.budgetInr is int && data.budgetInr >= 1500 && data.budgetInr <= 5000000
+        && data.intent is string && data.intent in ['rest', 'enjoy', 'travel', 'trek', 'adventure']
+        && data.style is string && data.style in ['budget_explorer', 'experience_seeker', 'luxury_traveller']
+        && data.interests is list && data.interests.size() <= 10 && (data.interests.size() == 0 || data.interests[0] is string)
+        && data.accommodationInr is int && data.accommodationInr >= 0 && data.accommodationInr <= 50000000
+        && data.transportationInr is int && data.transportationInr >= 0 && data.transportationInr <= 50000000
+        && data.activitiesInr is int && data.activitiesInr >= 0 && data.activitiesInr <= 50000000
+        && data.foodInr is int && data.foodInr >= 0 && data.foodInr <= 50000000
+        && data.estimatedTotalInr is int && data.estimatedTotalInr >= 0 && data.estimatedTotalInr <= 50000000
+        && data.estimatedTotalInr == (data.accommodationInr + data.transportationInr + data.activitiesInr + data.foodInr)
+        && data.withinBudget is bool
+        && data.budgetExplanation is string && data.budgetExplanation.size() <= 500
+        && data.status is string && data.status in ['draft', 'planned', 'archived']
+        && data.provenance is string && data.provenance.size() <= 300
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidItineraryItem(data, uid, tripId, itemId) {
+      return data.keys().hasAll([
+          'id', 'tripId', 'ownerUid', 'dayNumber', 'order', 'itemType', 'costCategory',
+          'catalogId', 'destinationId', 'destinationName', 'title', 'subtitle', 'notes',
+          'estimatedTravelTimeLabel', 'unitCostInr', 'quantity', 'quantityLabel',
+          'estimatedCostInr', 'completed', 'durationHours', 'seasonNotes', 'difficulty',
+          'safetyNotes', 'providerName', 'provenance', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'tripId', 'ownerUid', 'dayNumber', 'order', 'itemType', 'costCategory',
+          'catalogId', 'destinationId', 'destinationName', 'title', 'subtitle', 'notes',
+          'estimatedTravelTimeLabel', 'unitCostInr', 'quantity', 'quantityLabel',
+          'estimatedCostInr', 'completed', 'durationHours', 'seasonNotes', 'difficulty',
+          'safetyNotes', 'providerName', 'provenance', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.id) && data.id == itemId
+        && isValidId(data.tripId) && data.tripId == tripId
+        && isValidId(data.ownerUid) && data.ownerUid == uid && data.ownerUid == request.auth.uid
+        && data.dayNumber is int && data.dayNumber >= 1 && data.dayNumber <= 14
+        && data.order is int && data.order >= 1 && data.order <= 100
+        && data.itemType is string && data.itemType in ['accommodation', 'transportation', 'activity', 'food', 'note']
+        && data.costCategory is string && data.costCategory in ['accommodation', 'transportation', 'activities', 'food']
+        && data.catalogId is string && data.catalogId.size() <= 128
+        && data.destinationId is string && data.destinationId.size() >= 1 && data.destinationId.size() <= 64 && data.destinationId.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.destinationName is string && data.destinationName.size() >= 1 && data.destinationName.size() <= 100
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 160
+        && data.subtitle is string && data.subtitle.size() <= 220
+        && data.notes is string && data.notes.size() <= 1000
+        && data.estimatedTravelTimeLabel is string && data.estimatedTravelTimeLabel.size() <= 100
+        && data.unitCostInr is int && data.unitCostInr >= 0 && data.unitCostInr <= 5000000
+        && data.quantity is int && data.quantity >= 1 && data.quantity <= 50
+        && data.quantityLabel is string && data.quantityLabel.size() <= 120
+        && data.estimatedCostInr is int && data.estimatedCostInr >= 0 && data.estimatedCostInr <= 50000000
+        && data.completed is bool
+        && (data.durationHours is int || data.durationHours is float) && data.durationHours >= 0 && data.durationHours <= 48
+        && data.seasonNotes is string && data.seasonNotes.size() <= 400
+        && data.difficulty is string && data.difficulty in ['', 'Easy', 'Moderate', 'Challenging']
+        && data.safetyNotes is string && data.safetyNotes.size() <= 800
+        && data.providerName is string && data.providerName.size() <= 160
+        && data.provenance is string && data.provenance.size() <= 300
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidTripExpense(data, uid, tripId, expenseId) {
+      return data.keys().hasAll([
+          'id', 'tripId', 'ownerUid', 'kind', 'itineraryItemId', 'description',
+          'category', 'amountInr', 'expenseDate', 'notes', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'tripId', 'ownerUid', 'kind', 'itineraryItemId', 'description',
+          'category', 'amountInr', 'expenseDate', 'notes', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.id) && data.id == expenseId
+        && isValidId(data.tripId) && data.tripId == tripId
+        && isValidId(data.ownerUid) && data.ownerUid == uid && data.ownerUid == request.auth.uid
+        && data.kind is string && data.kind in ['itinerary_item', 'additional']
+        && data.itineraryItemId is string && data.itineraryItemId.size() <= 128
+        && (
+          (data.kind == 'additional' && data.itineraryItemId == '')
+          || (data.kind == 'itinerary_item' && isValidId(data.itineraryItemId))
+        )
+        && data.description is string && data.description.size() >= 1 && data.description.size() <= 160
+        && data.category is string && data.category in [
+          'accommodation', 'transportation', 'activities', 'food',
+          'parking', 'shopping', 'miscellaneous'
+        ]
+        && data.amountInr is int && data.amountInr >= 0 && data.amountInr <= 50000000
+        && hasValidDateString(data.expenseDate)
+        && data.notes is string && data.notes.size() <= 300
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidBookingRequest(data, uid, requestId) {
+      return data.keys().hasAll([
+          'id', 'ownerUid', 'tripId', 'itemType', 'catalogId', 'itemName',
+          'destinationName', 'providerName', 'preferredDate', 'durationUnits',
+          'durationLabel', 'travellers', 'estimatedTotalInr', 'contactName',
+          'contactEmail', 'specialNotes', 'status', 'confirmationNotice',
+          'provenance', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'ownerUid', 'tripId', 'itemType', 'catalogId', 'itemName',
+          'destinationName', 'providerName', 'preferredDate', 'durationUnits',
+          'durationLabel', 'travellers', 'estimatedTotalInr', 'contactName',
+          'contactEmail', 'specialNotes', 'status', 'confirmationNotice',
+          'provenance', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.id) && data.id == requestId
+        && isValidId(data.ownerUid) && data.ownerUid == uid && data.ownerUid == request.auth.uid
+        && data.tripId is string && data.tripId.size() <= 128
+        && data.itemType is string && data.itemType in ['accommodation', 'experience']
+        && isValidId(data.catalogId)
+        && data.itemName is string && data.itemName.size() >= 1 && data.itemName.size() <= 160
+        && data.destinationName is string && data.destinationName.size() >= 1 && data.destinationName.size() <= 100
+        && data.providerName is string && data.providerName.size() >= 1 && data.providerName.size() <= 160
+        && hasValidDateString(data.preferredDate)
+        && (data.durationUnits is int || data.durationUnits is float) && data.durationUnits >= 0.5 && data.durationUnits <= 30
+        && data.durationLabel is string && data.durationLabel.size() <= 100
+        && data.travellers is int && data.travellers >= 1 && data.travellers <= 12
+        && data.estimatedTotalInr is int && data.estimatedTotalInr >= 0 && data.estimatedTotalInr <= 50000000
+        && data.contactName is string && data.contactName.size() >= 2 && data.contactName.size() <= 100
+        && hasValidEmail(data.contactEmail)
+        && data.specialNotes is string && data.specialNotes.size() <= 800
+        && data.status == 'requested'
+        && data.confirmationNotice is string && data.confirmationNotice.size() >= 1 && data.confirmationNotice.size() <= 300
+        && data.provenance is string && data.provenance.size() <= 300
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    // -------------------------------------------------------------------------
+    // Collection 1: /users/{uid} (PII Strictly Isolated to Owner)
+    // -------------------------------------------------------------------------
+    match /users/{uid} {
+      allow get: if isOwner(uid) && isValidId(uid);
+      allow list: if false;
+
+      allow create: if isOwner(uid)
+        && isValidId(uid)
+        && isValidUserProfile(incoming(), uid)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isOwner(uid)
+        && isValidId(uid)
+        && isValidUserProfile(incoming(), uid)
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'email', 'photoURL', 'updatedAt']);
+
+      allow delete: if false;
+
+      // -----------------------------------------------------------------------
+      // Collection 2: /users/{uid}/trips/{tripId}
+      // -----------------------------------------------------------------------
+      match /trips/{tripId} {
+        allow get: if isOwner(uid) && isValidId(uid) && isValidId(tripId)
+          && (resource == null || existing().ownerUid == request.auth.uid);
+
+        allow list: if isOwner(uid) && existing().ownerUid == request.auth.uid;
+
+        allow create: if isOwner(uid)
+          && isValidId(uid)
+          && isValidId(tripId)
+          && isValidSavedTrip(incoming(), uid, tripId)
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && existsAfter(/databases/$(database)/documents/users/$(uid));
+
+        allow update: if isOwner(uid)
+          && isValidId(uid)
+          && isValidId(tripId)
+          && isValidSavedTrip(incoming(), uid, tripId)
+          && existing().ownerUid == request.auth.uid
+          && incoming().ownerUid == existing().ownerUid
+          && incoming().id == existing().id
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && existing().status != 'archived'
+          && exists(/databases/$(database)/documents/users/$(uid))
+          && (
+            // Action 1: Edit trip details & recalculated totals
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'title', 'accommodationInr', 'transportationInr', 'activitiesInr',
+              'foodInr', 'estimatedTotalInr', 'withinBudget', 'budgetExplanation',
+              'status', 'updatedAt'
+            ])
+            ||
+            // Action 2: Archive trip (terminal lock)
+            (incoming().status == 'archived' && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']))
+          );
+
+        allow delete: if isOwner(uid)
+          && isValidId(uid)
+          && isValidId(tripId)
+          && existing().ownerUid == request.auth.uid;
+
+        // ---------------------------------------------------------------------
+        // Collection 3: /users/{uid}/trips/{tripId}/items/{itemId}
+        // ---------------------------------------------------------------------
+        match /items/{itemId} {
+          allow get: if isOwner(uid)
+            && isValidId(uid)
+            && isValidId(tripId)
+            && isValidId(itemId)
+            && (resource == null || (existing().ownerUid == request.auth.uid && existing().tripId == tripId))
+            && get(/databases/$(database)/documents/users/$(uid)/trips/$(tripId)).data.ownerUid == request.auth.uid;
+
+          allow list: if isOwner(uid)
+            && existing().ownerUid == request.auth.uid
+            && existing().tripId == tripId;
+
+          allow create: if isOwner(uid)
+            && isValidId(uid)
+            && isValidId(tripId)
+            && isValidId(itemId)
+            && isValidItineraryItem(incoming(), uid, tripId, itemId)
+            && incoming().createdAt == request.time
+            && incoming().updatedAt == request.time
+            && getAfter(/databases/$(database)/documents/users/$(uid)/trips/$(tripId)).data.ownerUid == request.auth.uid;
+
+          allow update: if isOwner(uid)
+            && isValidId(uid)
+            && isValidId(tripId)
+            && isValidId(itemId)
+            && isValidItineraryItem(incoming(), uid, tripId, itemId)
+            && existing().ownerUid == request.auth.uid
+            && existing().tripId == tripId
+            && incoming().ownerUid == existing().ownerUid
+            && incoming().tripId == existing().tripId
+            && incoming().id == existing().id
+            && incoming().createdAt == existing().createdAt
+            && incoming().updatedAt == request.time
+            && get(/databases/$(database)/documents/users/$(uid)/trips/$(tripId)).data.ownerUid == request.auth.uid
+            && get(/databases/$(database)/documents/users/$(uid)/trips/$(tripId)).data.status != 'archived'
+            && (
+              // Action 1: Toggle completion status
+              incoming().diff(existing()).affectedKeys().hasOnly(['completed', 'updatedAt'])
+              ||
+              // Action 2: Replace stay or activity item details & recalculated cost
+              incoming().diff(existing()).affectedKeys().hasOnly([
+                'catalogId', 'destinationId', 'destinationName', 'title', 'subtitle',
+                'notes', 'estimatedTravelTimeLabel', 'unitCostInr', 'quantity',
+                'quantityLabel', 'estimatedCostInr', 'durationHours', 'seasonNotes',
+                'difficulty', 'safetyNotes', 'providerName', 'provenance', 'order',
+                'completed', 'updatedAt'
+              ])
+            );
+
+          allow delete: if isOwner(uid)
+            && isValidId(uid)
+            && isValidId(tripId)
+            && isValidId(itemId)
+            && existing().ownerUid == request.auth.uid
+            && existing().tripId == tripId
+            && get(/databases/$(database)/documents/users/$(uid)/trips/$(tripId)).data.ownerUid == request.auth.uid;
+        }
+
+        // ---------------------------------------------------------------------
+        // Collection 4: /users/{uid}/trips/{tripId}/expenses/{expenseId}
+        // ---------------------------------------------------------------------
+        match /expenses/{expenseId} {
+          allow get: if isOwner(uid)
+            && isValidId(uid)
+            && isValidId(tripId)
+            && isValidId(expenseId)
+            && (resource == null || (existing().ownerUid == request.auth.uid && existing().tripId == tripId))
+            && get(/databases/$(database)/documents/users/$(uid)/trips/$(tripId)).data.ownerUid == request.auth.uid;
+
+          allow list: if isOwner(uid)
+            && existing().ownerUid == request.auth.uid
+            && existing().tripId == tripId;
+
+          allow create: if isOwner(uid)
+            && isValidId(uid)
+            && isValidId(tripId)
+            && isValidId(expenseId)
+            && isValidTripExpense(incoming(), uid, tripId, expenseId)
+            && incoming().createdAt == request.time
+            && incoming().updatedAt == request.time
+            && getAfter(/databases/$(database)/documents/users/$(uid)/trips/$(tripId)).data.ownerUid == request.auth.uid
+            && getAfter(/databases/$(database)/documents/users/$(uid)/trips/$(tripId)).data.status != 'archived';
+
+          allow update: if isOwner(uid)
+            && isValidId(uid)
+            && isValidId(tripId)
+            && isValidId(expenseId)
+            && isValidTripExpense(incoming(), uid, tripId, expenseId)
+            && existing().ownerUid == request.auth.uid
+            && existing().tripId == tripId
+            && incoming().ownerUid == existing().ownerUid
+            && incoming().tripId == existing().tripId
+            && incoming().id == existing().id
+            && incoming().kind == existing().kind
+            && incoming().itineraryItemId == existing().itineraryItemId
+            && incoming().createdAt == existing().createdAt
+            && incoming().updatedAt == request.time
+            && get(/databases/$(database)/documents/users/$(uid)/trips/$(tripId)).data.ownerUid == request.auth.uid
+            && get(/databases/$(database)/documents/users/$(uid)/trips/$(tripId)).data.status != 'archived'
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'description', 'category', 'amountInr', 'expenseDate', 'notes', 'updatedAt'
+            ]);
+
+          allow delete: if isOwner(uid)
+            && isValidId(uid)
+            && isValidId(tripId)
+            && isValidId(expenseId)
+            && existing().ownerUid == request.auth.uid
+            && existing().tripId == tripId
+            && get(/databases/$(database)/documents/users/$(uid)/trips/$(tripId)).data.ownerUid == request.auth.uid;
+        }
+      }
+
+      // -----------------------------------------------------------------------
+      // Collection 5: /users/{uid}/bookingRequests/{requestId}
+      // -----------------------------------------------------------------------
+      match /bookingRequests/{requestId} {
+        allow get: if isOwner(uid) && isValidId(uid) && isValidId(requestId)
+          && (resource == null || existing().ownerUid == request.auth.uid);
+
+        allow list: if isOwner(uid) && existing().ownerUid == request.auth.uid;
+
+        allow create: if isOwner(uid)
+          && isValidId(uid)
+          && isValidId(requestId)
+          && isValidBookingRequest(incoming(), uid, requestId)
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && existsAfter(/databases/$(database)/documents/users/$(uid));
+
+        // Immutable once requested: clients can never self-confirm a booking enquiry
+        allow update: if false;
+
+        allow delete: if isOwner(uid)
+          && isValidId(uid)
+          && isValidId(requestId)
+          && existing().ownerUid == request.auth.uid;
+      }
+    }
+  }
+}

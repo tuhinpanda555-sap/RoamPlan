@@ -1,0 +1,555 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Authenticated traveller profile isolated strictly to the owning Firebase UID.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "minLength": 3,
+          "maxLength": 254
+        },
+        "photoURL": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "displayName", "email", "photoURL", "createdAt", "updatedAt"]
+    },
+    "SavedTrip": {
+      "title": "SavedTrip",
+      "description": "User-owned Himachal Pradesh itinerary metadata and deterministic 4-category cost summary.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownerUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "localSourceId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 140
+        },
+        "destinationId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "destinationName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "stopNames": {
+          "type": "array",
+          "description": "Bounded list of up to 5 Himachal stop names."
+        },
+        "startDate": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 10,
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "days": {
+          "type": "integer"
+        },
+        "travellers": {
+          "type": "integer"
+        },
+        "budgetInr": {
+          "type": "integer"
+        },
+        "intent": {
+          "type": "string",
+          "enum": ["rest", "enjoy", "travel", "trek", "adventure"]
+        },
+        "style": {
+          "type": "string",
+          "enum": ["budget_explorer", "experience_seeker", "luxury_traveller"]
+        },
+        "interests": {
+          "type": "array",
+          "description": "Bounded list of up to 10 traveller interest tags."
+        },
+        "accommodationInr": {
+          "type": "integer"
+        },
+        "transportationInr": {
+          "type": "integer"
+        },
+        "activitiesInr": {
+          "type": "integer"
+        },
+        "foodInr": {
+          "type": "integer"
+        },
+        "estimatedTotalInr": {
+          "type": "integer"
+        },
+        "withinBudget": {
+          "type": "boolean"
+        },
+        "budgetExplanation": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "status": {
+          "type": "string",
+          "enum": ["draft", "planned", "archived"]
+        },
+        "provenance": {
+          "type": "string",
+          "maxLength": 300
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "ownerUid",
+        "localSourceId",
+        "title",
+        "destinationId",
+        "destinationName",
+        "stopNames",
+        "startDate",
+        "days",
+        "travellers",
+        "budgetInr",
+        "intent",
+        "style",
+        "interests",
+        "accommodationInr",
+        "transportationInr",
+        "activitiesInr",
+        "foodInr",
+        "estimatedTotalInr",
+        "withinBudget",
+        "budgetExplanation",
+        "status",
+        "provenance",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "ItineraryItem": {
+      "title": "ItineraryItem",
+      "description": "Individual day-wise stay, transport, activity, food, or advisory item stored in a trip subcollection.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "tripId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownerUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "dayNumber": {
+          "type": "integer"
+        },
+        "order": {
+          "type": "integer"
+        },
+        "itemType": {
+          "type": "string",
+          "enum": ["accommodation", "transportation", "activity", "food", "note"]
+        },
+        "costCategory": {
+          "type": "string",
+          "enum": ["accommodation", "transportation", "activities", "food"]
+        },
+        "catalogId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "destinationId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "destinationName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "subtitle": {
+          "type": "string",
+          "maxLength": 220
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "estimatedTravelTimeLabel": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "unitCostInr": {
+          "type": "integer"
+        },
+        "quantity": {
+          "type": "integer"
+        },
+        "quantityLabel": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "estimatedCostInr": {
+          "type": "integer"
+        },
+        "completed": {
+          "type": "boolean"
+        },
+        "durationHours": {
+          "type": "number"
+        },
+        "seasonNotes": {
+          "type": "string",
+          "maxLength": 400
+        },
+        "difficulty": {
+          "type": "string",
+          "enum": ["", "Easy", "Moderate", "Challenging"]
+        },
+        "safetyNotes": {
+          "type": "string",
+          "maxLength": 800
+        },
+        "providerName": {
+          "type": "string",
+          "maxLength": 160
+        },
+        "provenance": {
+          "type": "string",
+          "maxLength": 300
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "tripId",
+        "ownerUid",
+        "dayNumber",
+        "order",
+        "itemType",
+        "costCategory",
+        "catalogId",
+        "destinationId",
+        "destinationName",
+        "title",
+        "subtitle",
+        "notes",
+        "estimatedTravelTimeLabel",
+        "unitCostInr",
+        "quantity",
+        "quantityLabel",
+        "estimatedCostInr",
+        "completed",
+        "durationHours",
+        "seasonNotes",
+        "difficulty",
+        "safetyNotes",
+        "providerName",
+        "provenance",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "BookingRequest": {
+      "title": "BookingRequest",
+      "description": "Unconfirmed sample booking enquiry scoped to the authenticated user; always status=requested.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownerUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "tripId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "itemType": {
+          "type": "string",
+          "enum": ["accommodation", "experience"]
+        },
+        "catalogId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "itemName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "destinationName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "providerName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "preferredDate": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 10,
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "durationUnits": {
+          "type": "number"
+        },
+        "durationLabel": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "travellers": {
+          "type": "integer"
+        },
+        "estimatedTotalInr": {
+          "type": "integer"
+        },
+        "contactName": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 100
+        },
+        "contactEmail": {
+          "type": "string",
+          "format": "email",
+          "minLength": 3,
+          "maxLength": 254
+        },
+        "specialNotes": {
+          "type": "string",
+          "maxLength": 800
+        },
+        "status": {
+          "type": "string",
+          "enum": ["requested"]
+        },
+        "confirmationNotice": {
+          "type": "string",
+          "maxLength": 300
+        },
+        "provenance": {
+          "type": "string",
+          "maxLength": 300
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "ownerUid",
+        "tripId",
+        "itemType",
+        "catalogId",
+        "itemName",
+        "destinationName",
+        "providerName",
+        "preferredDate",
+        "durationUnits",
+        "durationLabel",
+        "travellers",
+        "estimatedTotalInr",
+        "contactName",
+        "contactEmail",
+        "specialNotes",
+        "status",
+        "confirmationNotice",
+        "provenance",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "TripExpense": {
+      "title": "TripExpense",
+      "description": "Actual expenditure entry recorded against a specific itinerary item or as an additional unplanned trip expense.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "tripId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownerUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "kind": {
+          "type": "string",
+          "enum": ["itinerary_item", "additional"]
+        },
+        "itineraryItemId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "category": {
+          "type": "string",
+          "enum": [
+            "accommodation",
+            "transportation",
+            "activities",
+            "food",
+            "parking",
+            "shopping",
+            "miscellaneous"
+          ]
+        },
+        "amountInr": {
+          "type": "integer"
+        },
+        "expenseDate": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 10,
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 300
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "tripId",
+        "ownerUid",
+        "kind",
+        "itineraryItemId",
+        "description",
+        "category",
+        "amountInr",
+        "expenseDate",
+        "notes",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{uid}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Private authenticated traveller profile containing PII, strictly restricted to the owning user."
+    },
+    "/users/{uid}/trips/{tripId}": {
+      "schema": { "$ref": "#/entities/SavedTrip" },
+      "description": "User-specific saved India itineraries with deterministic 4-category cost summaries."
+    },
+    "/users/{uid}/trips/{tripId}/items/{itemId}": {
+      "schema": { "$ref": "#/entities/ItineraryItem" },
+      "description": "Day-wise itinerary items stored as a scalable subcollection under each saved trip."
+    },
+    "/users/{uid}/trips/{tripId}/expenses/{expenseId}": {
+      "schema": { "$ref": "#/entities/TripExpense" },
+      "description": "Actual expenditure records linked to itinerary items or unplanned trip costs, strictly scoped to the trip owner."
+    },
+    "/users/{uid}/bookingRequests/{requestId}": {
+      "schema": { "$ref": "#/entities/BookingRequest" },
+      "description": "User-specific unconfirmed sample booking enquiries (status locked to requested)."
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "name": "RoamPlan",
+  "description": "An editorial pan-India travel planning platform with OpenStreetMap destination discovery, curated budget-aware multi-location itineraries, trip progress tracking, and private Cloud Firestore sync.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
