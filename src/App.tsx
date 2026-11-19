@@ -231,8 +231,10 @@ function RoamPlanApp() {
   );
 
   const loadUserCloudData = useCallback(
-    async (fbUser: User) => {
-      setTripsLoading(true);
+    async (fbUser: User, options?: { silent?: boolean }) => {
+      if (!options?.silent) {
+        setTripsLoading(true);
+      }
       setTripsError(null);
       try {
         await upsertUserProfile(fbUser);
@@ -245,6 +247,15 @@ function RoamPlanApp() {
         setBookingRequests(cloudEnquiries);
         setUnmigratedLocalTrips(filterUnmigratedLocalTrips(listSavedTrips(), cloudTrips));
 
+        // Keep an open saved trip synchronized with authoritative Firestore data
+        if (editingIsSavedRef.current) {
+          setEditingTrip((current) => {
+            if (!current) return current;
+            const latest = cloudTrips.find((t) => t.id === current.id);
+            return latest ?? current;
+          });
+        }
+
         if (pendingSaveTripRef.current) {
           const pending = pendingSaveTripRef.current;
           pendingSaveTripRef.current = null;
@@ -253,7 +264,9 @@ function RoamPlanApp() {
       } catch (error) {
         setTripsError(formatReadableFirestoreError(error));
       } finally {
-        setTripsLoading(false);
+        if (!options?.silent) {
+          setTripsLoading(false);
+        }
       }
     },
     [persistTripToCloud]
@@ -290,6 +303,20 @@ function RoamPlanApp() {
   const navigateTo = (view: AppView) => {
     setActiveView(view);
     window.scrollTo({ top: 0, behavior: 'smooth' });
+    // Whenever returning to My Trips while signed in, wait for queued writes and
+    // silently re-sync from Firestore so dashboard totals always reflect cloud truth.
+    if (view === 'my-trips' && auth.currentUser) {
+      const currentUser = auth.currentUser;
+      void syncQueueRef.current
+        .catch(() => {
+          // Prior write error already surfaced
+        })
+        .then(() => {
+          if (auth.currentUser?.uid === currentUser.uid) {
+            void loadUserCloudData(currentUser, { silent: true });
+          }
+        });
+    }
   };
 
   const handleSignIn = async () => {
@@ -535,7 +562,7 @@ function RoamPlanApp() {
   const handleSaveExpense = async (expense: TripExpense): Promise<void> => {
     if (!editingTrip) return;
     const tripId = editingTrip.id;
-    const isCloudSynced = editingIsSaved && Boolean(authUser);
+    const isCloudSynced = editingIsSavedRef.current && Boolean(authUser);
 
     setAppError(null);
     const applyExpenseToState = (savedExpense: TripExpense) => {
@@ -553,58 +580,59 @@ function RoamPlanApp() {
       }
     };
 
-    applyExpenseToState({ ...expense, tripId });
-
     if (isCloudSynced && authUser) {
       const uid = authUser.uid;
       setIsSavingTrip(true);
       try {
-        await new Promise<void>((resolve, reject) => {
+        const persisted = await new Promise<TripExpense>((resolve, reject) => {
           syncQueueRef.current = syncQueueRef.current.then(async () => {
             try {
-              const persisted = await upsertTripExpenseInFirestore(uid, tripId, {
+              const saved = await upsertTripExpenseInFirestore(uid, tripId, {
                 ...expense,
                 tripId,
                 ownerUid: uid,
               });
-              applyExpenseToState(persisted);
-              resolve();
+              resolve(saved);
             } catch (err) {
               reject(err);
             }
           });
         });
+        // Only update editor & My Trips after Firestore confirms persistence
+        applyExpenseToState(persisted);
       } catch (error) {
         setAppError(formatReadableFirestoreError(error));
-        // Reload authoritative state from Firestore on write failure
-        if (auth.currentUser) {
-          void loadUserCloudData(auth.currentUser);
-        }
         throw error;
       } finally {
         setIsSavingTrip(false);
       }
+      return;
     }
+
+    // Unsaved local draft (not yet stored in Firestore)
+    applyExpenseToState({ ...expense, tripId });
   };
 
   const handleDeleteExpense = async (expenseId: string): Promise<void> => {
     if (!editingTrip) return;
     const tripId = editingTrip.id;
-    const isCloudSynced = editingIsSaved && Boolean(authUser);
+    const isCloudSynced = editingIsSavedRef.current && Boolean(authUser);
 
     setAppError(null);
-    setEditingTrip((current) =>
-      current && current.id === tripId
-        ? { ...current, expenses: removeExpenseFromList(current.expenses, expenseId) }
-        : current
-    );
-    if (editingIsSavedRef.current) {
-      setSavedTrips((prev) =>
-        prev.map((t) =>
-          t.id === tripId ? { ...t, expenses: removeExpenseFromList(t.expenses, expenseId) } : t
-        )
+    const removeExpenseFromState = () => {
+      setEditingTrip((current) =>
+        current && current.id === tripId
+          ? { ...current, expenses: removeExpenseFromList(current.expenses, expenseId) }
+          : current
       );
-    }
+      if (editingIsSavedRef.current) {
+        setSavedTrips((prev) =>
+          prev.map((t) =>
+            t.id === tripId ? { ...t, expenses: removeExpenseFromList(t.expenses, expenseId) } : t
+          )
+        );
+      }
+    };
 
     if (isCloudSynced && authUser) {
       const uid = authUser.uid;
@@ -620,16 +648,19 @@ function RoamPlanApp() {
             }
           });
         });
+        // Only remove from editor & My Trips after Firestore confirms deletion
+        removeExpenseFromState();
       } catch (error) {
         setAppError(formatReadableFirestoreError(error));
-        if (auth.currentUser) {
-          void loadUserCloudData(auth.currentUser);
-        }
         throw error;
       } finally {
         setIsSavingTrip(false);
       }
+      return;
     }
+
+    // Unsaved local draft
+    removeExpenseFromState();
   };
 
   const handleDeleteTrip = async (tripId: string) => {

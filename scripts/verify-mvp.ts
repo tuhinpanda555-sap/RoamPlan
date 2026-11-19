@@ -658,7 +658,10 @@ async function run() {
   assert.equal(summary.additionalActualInr, 0);
   assert.equal(summary.actualPerTravellerAvgInr, 2000, 'Equal average for 2 travellers must be 4000/2 = 2000');
   assert.equal(summary.remainingBudgetInr, summary.estimatedTotalInr - 4000);
-  assert.equal(summary.budgetUtilizationPct, Math.round((4000 / summary.estimatedTotalInr) * 100));
+  assert.equal(
+    summary.budgetUtilizationPct,
+    Math.round(((4000 / summary.estimatedTotalInr) * 100) * 10) / 10
+  );
 
   const variance1 = computeItemExpenseVariance(firstActivity.estimatedCostInr, 4000);
   assert.equal(variance1.differenceInr, 4000 - firstActivity.estimatedCostInr);
@@ -786,6 +789,86 @@ async function run() {
 
   console.log(
     '✓ Verified actual expense tracking (completion independence, ₹0 zero-cost, edit deduplication, unplanned expenses, delete recalculation, reload persistence, backward compatibility, and over-budget warning math).'
+  );
+
+  // 9. Exact User Regression Scenario: ₹100 + ₹200 = ₹300, Edit ₹100→₹150 = ₹350 (no duplicate), Delete ₹200 = ₹150
+  const actA = trackedTrip.items[0];
+  const actB = trackedTrip.items[1];
+  assert.ok(actA && actB, 'Expected at least 2 itinerary items for multi-activity expense test');
+
+  const exp100: TripExpense = {
+    id: getDeterministicItemExpenseId(actA.id),
+    tripId: trackedTrip.id,
+    kind: 'itinerary_item',
+    itineraryItemId: actA.id,
+    description: actA.title,
+    category: actA.costCategory,
+    amountInr: 100,
+    expenseDate: '2026-12-20',
+    notes: 'Ticket 1',
+    createdAt: nowIso,
+    updatedAt: nowIso,
+  };
+  const exp200: TripExpense = {
+    id: getDeterministicItemExpenseId(actB.id),
+    tripId: trackedTrip.id,
+    kind: 'itinerary_item',
+    itineraryItemId: actB.id,
+    description: actB.title,
+    category: actB.costCategory,
+    amountInr: 200,
+    expenseDate: '2026-12-20',
+    notes: 'Ticket 2',
+    createdAt: nowIso,
+    updatedAt: nowIso,
+  };
+
+  let regExpenses = upsertExpenseInList([], exp100);
+  regExpenses = upsertExpenseInList(regExpenses, exp200);
+  const sum300 = computeTripFinancialSummary({ ...trackedTrip, expenses: regExpenses });
+  assert.equal(sum300.actualTotalInr, 300, 'Expected Actual Spent = ₹300');
+  assert.equal(sum300.remainingBudgetInr, sum300.estimatedTotalInr - 300);
+  assert.equal(sum300.actualPerTravellerAvgInr, 150, 'Expected ₹300 / 2 travellers = ₹150');
+  assert.ok(
+    sum300.budgetUtilizationPct > 0,
+    `Small positive expense ₹300 must NEVER round down to 0% utilization (got ${sum300.budgetUtilizationPct}%)`
+  );
+  assert.ok(
+    sum300.budgetUtilizationBarPct >= 2,
+    'Budget utilization progress bar must show a visible segment whenever actualTotalInr > 0'
+  );
+
+  // Edit ₹100 → ₹150 (must replace in place → ₹350, never ₹450)
+  const exp150: TripExpense = {
+    ...exp100,
+    amountInr: 150,
+    updatedAt: new Date(Date.now() + 1000).toISOString(),
+  };
+  regExpenses = upsertExpenseInList(regExpenses, exp150);
+  assert.equal(regExpenses.length, 2, 'Updating ₹100→₹150 must not create a duplicate record');
+  const sum350 = computeTripFinancialSummary({ ...trackedTrip, expenses: regExpenses });
+  assert.equal(sum350.actualTotalInr, 350, 'Expected Actual Spent = ₹350 (NOT ₹450)');
+
+  // Defensive double-count protection: even if duplicate item expenses were passed directly
+  const dupGuardSum = computeTripFinancialSummary({
+    ...trackedTrip,
+    expenses: [...regExpenses, exp100, exp150],
+  });
+  assert.equal(
+    dupGuardSum.actualTotalInr,
+    350,
+    'computeTripFinancialSummary must defensively deduplicate expenses to prevent double-counting'
+  );
+
+  // Delete ₹200 expense → Actual Spent becomes ₹150
+  regExpenses = removeExpenseFromList(regExpenses, exp200.id);
+  const sum150 = computeTripFinancialSummary({ ...trackedTrip, expenses: regExpenses });
+  assert.equal(sum150.actualTotalInr, 150, 'Expected Actual Spent = ₹150 after deleting ₹200 expense');
+  assert.equal(sum150.remainingBudgetInr, sum150.estimatedTotalInr - 150);
+  assert.equal(sum150.actualPerTravellerAvgInr, 75);
+
+  console.log(
+    `✓ Verified exact multi-expense regression (₹100+₹200=₹300 [${sum300.budgetUtilizationPct}%], edit ₹100→₹150=₹350 with zero duplication, delete ₹200=₹150).`
   );
 
   console.log('\nALL PAN-INDIA DISCOVERY, EXPENSE TRACKING & FIRESTORE COMPATIBILITY CHECKS PASSED.');

@@ -36,7 +36,8 @@ function sanitizeId(raw: string, prefix: string): string {
 }
 
 function clampString(value: string | undefined | null, maxLen: number, fallback = ''): string {
-  const text = (value ?? fallback).trim();
+  const trimmed = (value ?? '').trim();
+  const text = trimmed.length > 0 ? trimmed : fallback.trim();
   return text.length > maxLen ? text.slice(0, maxLen) : text;
 }
 
@@ -587,11 +588,13 @@ export async function upsertTripExpenseInFirestore(
   const expensePath = `users/${uid}/trips/${safeTripId}/expenses/${payload.id}`;
   const expenseRef = doc(db, 'users', uid, 'trips', safeTripId, 'expenses', payload.id);
 
+  let currentOp: OperationType = OperationType.GET;
   try {
     const existingSnap = await getDoc(expenseRef);
     const nowIso = new Date().toISOString();
 
     if (existingSnap.exists()) {
+      currentOp = OperationType.UPDATE;
       await updateDoc(expenseRef, {
         description: payload.description,
         category: payload.category,
@@ -608,6 +611,7 @@ export async function upsertTripExpenseInFirestore(
       };
     }
 
+    currentOp = OperationType.CREATE;
     await setDoc(expenseRef, {
       ...payload,
       createdAt: serverTimestamp(),
@@ -620,7 +624,7 @@ export async function upsertTripExpenseInFirestore(
       updatedAt: nowIso,
     };
   } catch (error) {
-    handleFirestoreError(error, OperationType.WRITE, expensePath);
+    handleFirestoreError(error, currentOp, expensePath);
   }
 }
 

@@ -145,7 +145,23 @@ export function computeTripFinancialSummary(
       ? calculateCostBreakdown(trip.items).totalInr
       : Math.max(0, Math.round(Number.isFinite(trip.estimatedTotalInr) ? trip.estimatedTotalInr : 0));
 
-  const expenses = Array.isArray(trip.expenses) ? trip.expenses : [];
+  const rawExpenses = Array.isArray(trip.expenses) ? trip.expenses : [];
+
+  // Defensively deduplicate by expense id and (for itinerary_item expenses) by itineraryItemId
+  // so the same recorded expense can never be double-counted.
+  const dedupedByKey = new Map<string, TripExpense>();
+  for (const exp of rawExpenses) {
+    if (!exp || typeof exp.id !== 'string' || exp.id.trim().length === 0) continue;
+    const dedupeKey =
+      exp.kind === 'itinerary_item' && exp.itineraryItemId
+        ? `item:${exp.itineraryItemId}`
+        : `id:${exp.id}`;
+    const prev = dedupedByKey.get(dedupeKey);
+    if (!prev || (exp.updatedAt || '').localeCompare(prev.updatedAt || '') >= 0) {
+      dedupedByKey.set(dedupeKey, exp);
+    }
+  }
+  const expenses = Array.from(dedupedByKey.values());
 
   let itemizedActualInr = 0;
   let additionalActualInr = 0;
@@ -169,12 +185,19 @@ export function computeTripFinancialSummary(
   const overBudgetInr = isOverBudget ? actualTotalInr - estimatedTotalInr : 0;
 
   let budgetUtilizationPct = 0;
-  if (estimatedTotalInr > 0) {
-    budgetUtilizationPct = Math.round((actualTotalInr / estimatedTotalInr) * 100);
-  } else if (actualTotalInr > 0) {
+  if (actualTotalInr <= 0) {
+    budgetUtilizationPct = 0;
+  } else if (estimatedTotalInr > 0) {
+    const rawPct = (actualTotalInr / estimatedTotalInr) * 100;
+    const roundedTenth = Math.round(rawPct * 10) / 10;
+    // Never round small positive recorded expenses down to 0%; keep >100% uncapped
+    budgetUtilizationPct = rawPct < 10 ? Math.max(0.1, roundedTenth) : roundedTenth;
+  } else {
     budgetUtilizationPct = 100;
   }
-  const budgetUtilizationBarPct = Math.min(100, Math.max(0, budgetUtilizationPct));
+
+  const budgetUtilizationBarPct =
+    actualTotalInr <= 0 ? 0 : Math.min(100, Math.max(2, budgetUtilizationPct));
 
   const safeTravellers = Math.max(1, Math.round(Number.isFinite(trip.travellers) ? trip.travellers : 1));
   const estimatedPerTravellerInr = Math.round(estimatedTotalInr / safeTravellers);

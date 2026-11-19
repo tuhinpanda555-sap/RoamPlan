@@ -47,6 +47,7 @@ import {
   getReplacementCatalogOptions,
   recalculateItineraryTotal,
 } from '../engine/itineraryEngine';
+import { formatReadableFirestoreError } from '../services/firebase';
 import { formatPoiCategoryLabel } from '../services/geospatialDiscoveryService';
 import {
   AuthUserProfile,
@@ -276,17 +277,27 @@ export function ItineraryEditorView({
       updatedAt: nowIso,
     };
 
+    setItemExpenseDraft((prev) => (prev ? { ...prev, error: null } : null));
     setExpenseSavingId(expenseId);
     try {
       await onSaveExpense(record);
+      // Close inline panel automatically only after confirmed persistence
       setItemExpenseDraft(null);
       setSaveFeedback(
         isSaved && user
           ? `Recorded actual expense (${formatInr(parsedAmount)}) in Cloud Firestore.`
           : `Recorded actual expense (${formatInr(parsedAmount)}). Save trip to sync to Cloud Firestore.`
       );
-    } catch {
-      // Error surfaced cleanly via App error banner
+    } catch (error) {
+      // Keep panel open with user's entered values preserved and surface inline error
+      setItemExpenseDraft((prev) =>
+        prev
+          ? {
+              ...prev,
+              error: formatReadableFirestoreError(error),
+            }
+          : null
+      );
     } finally {
       setExpenseSavingId(null);
     }
@@ -305,8 +316,17 @@ export function ItineraryEditorView({
           ? 'Removed recorded expense from Cloud Firestore.'
           : 'Removed recorded expense.'
       );
-    } catch {
-      // Error surfaced cleanly via App error banner
+    } catch (error) {
+      if (itemExpenseDraft?.itemId === expense.itineraryItemId) {
+        setItemExpenseDraft((prev) =>
+          prev
+            ? {
+                ...prev,
+                error: formatReadableFirestoreError(error),
+              }
+            : null
+        );
+      }
     } finally {
       setExpenseSavingId(null);
     }
@@ -383,9 +403,11 @@ export function ItineraryEditorView({
       updatedAt: nowIso,
     };
 
+    setAdditionalForm((prev) => (prev ? { ...prev, error: null } : null));
     setExpenseSavingId(expenseId);
     try {
       await onSaveExpense(record);
+      // Close panel automatically only after confirmed persistence
       setAdditionalForm(null);
       setSaveFeedback(
         isSaved && user
@@ -396,8 +418,16 @@ export function ItineraryEditorView({
               parsedAmount
             )}). Save trip to sync to Cloud Firestore.`
       );
-    } catch {
-      // Error surfaced cleanly via App error banner
+    } catch (error) {
+      // Keep panel open with entered values intact and show clear inline error
+      setAdditionalForm((prev) =>
+        prev
+          ? {
+              ...prev,
+              error: formatReadableFirestoreError(error),
+            }
+          : null
+      );
     } finally {
       setExpenseSavingId(null);
     }
@@ -1196,7 +1226,13 @@ export function ItineraryEditorView({
 
                         {/* Inline Actual Expense Form */}
                         {isEditingExpense && itemExpenseDraft && (
-                          <div className="mt-5 pt-5 border-t border-[#DFD9CE] bg-[#F8F6F1] -mx-6 -mb-6 px-6 pb-6 rounded-b-lg">
+                          <form
+                            onSubmit={(e) => {
+                              e.preventDefault();
+                              void handleSubmitItemExpense(item);
+                            }}
+                            className="mt-5 pt-5 border-t border-[#DFD9CE] bg-[#F8F6F1] -mx-6 -mb-6 px-6 pb-6 rounded-b-lg"
+                          >
                             <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
                               <div>
                                 <p className="text-sm font-semibold text-[#17211C]">
@@ -1321,23 +1357,31 @@ export function ItineraryEditorView({
                             </div>
 
                             {itemExpenseDraft.error && (
-                              <p className="mt-2 text-xs font-medium text-[#9B2C1B]">
+                              <div
+                                role="alert"
+                                className="mt-3 p-2.5 bg-[#FDF4F2] border border-[#E5B9B0] rounded text-xs font-medium text-[#9B2C1B]"
+                              >
                                 {itemExpenseDraft.error}
-                              </p>
+                              </div>
                             )}
 
                             <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
                               <div className="flex flex-wrap items-center gap-2.5">
                                 <button
-                                  type="button"
+                                  type="submit"
                                   disabled={isSavingThisExpense}
-                                  onClick={() => void handleSubmitItemExpense(item)}
                                   className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-[#F8F6F1] bg-[#1B4B3A] hover:bg-[#13382B] disabled:opacity-60 rounded-md min-h-[38px]"
                                 >
                                   {isSavingThisExpense && (
                                     <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
                                   )}
-                                  <span>Save Actual Expense</span>
+                                  <span>
+                                    {isSavingThisExpense
+                                      ? 'Saving…'
+                                      : recordedExpense
+                                      ? 'Update Actual Expense'
+                                      : 'Save Actual Expense'}
+                                  </span>
                                 </button>
                                 <button
                                   type="button"
@@ -1363,7 +1407,7 @@ export function ItineraryEditorView({
                                 </button>
                               )}
                             </div>
-                          </div>
+                          </form>
                         )}
 
                         {/* Inline Replacement Picker */}
@@ -1470,7 +1514,13 @@ export function ItineraryEditorView({
 
         {/* Inline Add / Edit Additional Expense Form */}
         {additionalForm && !isArchived && (
-          <div className="mt-5 p-6 bg-white border border-[#1B4B3A] rounded-lg">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              void handleSubmitAdditionalExpense();
+            }}
+            className="mt-5 p-6 bg-white border border-[#1B4B3A] rounded-lg"
+          >
             <div className="flex items-center justify-between gap-2 mb-4">
               <h3 className="text-sm font-semibold text-[#17211C]">
                 {additionalForm.id ? 'Edit Additional Expense' : 'Record Additional Expense'}
@@ -1604,30 +1654,41 @@ export function ItineraryEditorView({
             </div>
 
             {additionalForm.error && (
-              <p className="mt-3 text-xs font-medium text-[#9B2C1B]">{additionalForm.error}</p>
+              <div
+                role="alert"
+                className="mt-3 p-2.5 bg-[#FDF4F2] border border-[#E5B9B0] rounded text-xs font-medium text-[#9B2C1B]"
+              >
+                {additionalForm.error}
+              </div>
             )}
 
             <div className="mt-4 flex items-center gap-3">
               <button
-                type="button"
+                type="submit"
                 disabled={Boolean(expenseSavingId)}
-                onClick={() => void handleSubmitAdditionalExpense()}
                 className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-[#F8F6F1] bg-[#1B4B3A] hover:bg-[#13382B] disabled:opacity-60 rounded-md min-h-[38px]"
               >
                 {expenseSavingId && (
                   <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
                 )}
-                <span>{additionalForm.id ? 'Update Expense' : 'Save Expense'}</span>
+                <span>
+                  {expenseSavingId
+                    ? 'Saving…'
+                    : additionalForm.id
+                    ? 'Update Expense'
+                    : 'Save Expense'}
+                </span>
               </button>
               <button
                 type="button"
+                disabled={Boolean(expenseSavingId)}
                 onClick={() => setAdditionalForm(null)}
                 className="px-3 py-2 text-xs font-medium text-[#4B5650] hover:text-[#17211C]"
               >
                 Cancel
               </button>
             </div>
-          </div>
+          </form>
         )}
 
         {/* List of Recorded Additional Expenses */}
